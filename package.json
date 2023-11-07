@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pwabuilder/cli": "^0.0.15",
     "@vitejs/plugin-vue-jsx": "^3.0.2",
     "gsap": "^3.12.2",
     "lil-gui": "^0.18.2",

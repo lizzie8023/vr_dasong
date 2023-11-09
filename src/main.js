@@ -2,5 +2,9 @@ import './assets/main.css'
 
 import { createApp } from 'vue'
 import App from './App.vue'
+// import zhayan from './zhayan.vue'
+// import huazhou from './huazhou.vue'
 
 createApp(App).mount('#app')
+// createApp(zhayan).mount('#app')
+// createApp(huazhou).mount('#app')

@@ -4,8 +4,7 @@
  
  <div class="container">
      <div class="webgl" id="webgl"></div>
-
-    <div class="loading-bar"></div>
+ 
  </div>
  
 </template>
@@ -15,57 +14,32 @@
 
 
 import * as THREE from 'three';
-
-import Stats from 'three/addons/libs/stats.module.js';
-
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-
 import { Octree } from 'three/addons/math/Octree.js';
-import { OctreeHelper } from 'three/addons/helpers/OctreeHelper.js';
-
-import { Capsule } from 'three/addons/math/Capsule.js';
-
-import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import { gsap } from 'gsap'
-import { hasInjectionContext } from 'vue';
-
-
-
+import { Capsule } from 'three/addons/math/Capsule.js';
+import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 import {
   VRButton
 } from 'three/addons/webxr/VRButton.js';
 
 
-let clock, scene, camera, renderer, stats;
-let textureLoader, loader, loadingManager;
-
-let loadingBarElement, overlayMaterial;
-
 let playerCollider, playerVelocity, playerDirection, worldOctree;
-
+let controller1, controller2;
 let GRAVITY = 30;
-
-let arrow;
-
 let STEPS_PER_FRAME = 5;
 
 export default {
   data() {
     return {
       playerOnFloor: false,
-      mouseTime: 0,
-      sceneReady: false,
+      isInDreaming: false,
       keyStates: {},
-      modelUrl: '7/scene.gltf',
-      needShowTipArrow: false,
-      arrow: null,
-      radius: 1,
-      currentIndex: -1,
       scaleValue: 200,
-
+      radius: 1,
       userH: 7.5,
       startRotationt: {
         x: -0.072,
@@ -82,296 +56,73 @@ export default {
         y: 1,
         z: -30.34
       },
-      allPos: [
-        {
-          x: -253.64,
-          y: 2.3,
-          z: -1.36
-        },
-        {
-          x: -194.70,
-          y: 2.3,
-          z: -49.22
-        },
-        {
-          x: -101.15,
-          y: 2.3,
-          z: -58.37
-        },
-        {
-          x: 9.23,
-          y: 2.3,
-          z: -40.80
-        },
-
-      ]
-
-
     }
   },
   mounted() {
+
+
+
     this.init();
 
+
+
+    this.renderer.setAnimationLoop(this.render);
     this.addEventListener();
+    this.addController();
+
+
+    this.renderer.xr.addEventListener('sessionstart', (event) => {
+      console.log("Session started", event);
+      this.showOriginalPainting();
+    });
+
+    this.renderer.xr.addEventListener('sessionend', (event) => {
+
+      console.log("Session ended", event);
+
+    });
+
+
+    setInterval(() => {
+
+      console.log('camera', this.camera.position, this.camera.rotation)
+    }, 3000);
+
+
   },
   methods: {
-    initGui() {
-      const gui = new GUI({ width: 200 });
-      gui.add({ debug: false }, 'debug').name('太空飞行模式')
-        .onChange(function (value) {
-          GRAVITY = value ? 0 : 30;
-        });
-      gui.add({ fog: false }, 'fog').name('开启迷雾效果')
-        .onChange(function (value) {
-          if (value) {
-            scene.fog = new THREE.Fog('#88ccee', 0, 350);
-          } else {
-            scene.fog = null;
-          }
-        });
-
-      gui.add({ value: 350 }, 'value').name('迷雾范围').min(0).max(10000).step(1).onChange(function (value) {
-        if (scene.fog) {
-          scene.fog.far = value;
-        }
-      })
-
-      const innColor = new THREE.Color("#88ccee")
-      gui.addColor({ color: innColor.getHexString() }, "color")
-        .name("迷雾颜色")
-        .onChange((hex) => {
-          console.log(scene.fog)
-          if (scene.fog) {
-            scene.fog.color = new THREE.Color(hex);
-          }
-        })
-
-
-    },
-
-    addTipModel() {
-      // 创建红色的箭头物体
-
-
-
-      const boxWidth = 10;
-      const boxHeight = 10;
-      const boxDepth = 10;
-      const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-
-      const material = new THREE.MeshPhongMaterial({ color: '#ffff00' });
-      const tipModels = new THREE.Group();
-
-      for (let index = 0; index < this.allPos.length; index++) {
-
-        const cube = new THREE.Mesh(boxGeometry, material);
-
-        cube.index = index;
-
-        cube.position.x = this.allPos[index].x;
-        cube.position.y = this.allPos[index].y + 10;
-        cube.position.z = this.allPos[index].z + 5;
-
-        cube.rotation.x = this.startRotationt.x;
-        cube.rotation.y = this.startRotationt.y;
-        cube.rotation.z = this.startRotationt.z;
-
-        tipModels.add(cube);
-      }
-
-
-      scene.add(tipModels);
-
-
-
-
-
-    },
-
     init() {
 
+      this.stageWidth = window.innerWidth;
+      this.stageHeight = window.innerHeight;
 
+      this.canvas = document.getElementById('webgl');
 
-      this.playerOnFloor = false;
-      this.mouseTime = 0;
-      this.sceneReady = false;
-      this.keyStates = {};
+      // renderer
+      this.renderer = new THREE.WebGLRenderer();
+      this.renderer.setClearColor(0x000000);
+      this.renderer.setSize(this.stageWidth, this.stageHeight);
+      this.canvas.appendChild(this.renderer.domElement);
+      // retina
+      this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
 
+      this.renderer.xr.enabled = true;
+      this.renderer.xr.setReferenceSpaceType('local');
 
-      clock = new THREE.Clock();
+      document.body.appendChild(VRButton.createButton(this.renderer));
 
-      scene = new THREE.Scene();
-      // scene.background = new THREE.Color(0x88ccee);
-      // 迷雾效果
-      scene.fog = new THREE.Fog('#88ccee', 0, 350);
+      // camera
+      this.camera = new THREE.PerspectiveCamera(
+        70,
+        this.stageWidth / this.stageHeight,
+        0.1,
+        100000
+      );
+      // this.camera.position.set(0, 0, 1200);
 
-
-      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.001, 5000);
-
-      camera.rotation.y = -(Math.PI * 0.45)
-      camera.rotation.order = 'YXZ';
-
-      var user = new THREE.Group();
-
-      user.position.set(0, this.userH, 0);
-      scene.add(user);
-      user.add(camera);
-
-      this.initGui();
-      this.initOverlay();
-      this.initLoadingManager();
-      this.initLoader();
-      this.initRender();
-      this.loadModel();
-
-
-      // this.animate();
-      renderer.setAnimationLoop(this.animate);
-
-
-      setInterval(() => {
-        if (camera.position.y == 2) return;
-        console.log('camera', camera.position, camera.rotation)
-      }, 3000);
-
-
-
-    },
-    addEventListener() {
-      const container = document.getElementById('webgl');
-      document.addEventListener('keydown', (event) => {
-
-        this.keyStates[event.code] = true;
-
-      });
-
-      document.addEventListener('keyup', (event) => {
-
-        this.keyStates[event.code] = false;
-
-      });
-
-      container.addEventListener('mousedown', () => {
-
-        document.body.requestPointerLock();
-
-        this.mouseTime = performance.now();
-
-      });
-
-      // document.addEventListener('mouseup', () => {
-
-      //     if (document.pointerLockElement !== null) throwBall();
-
-      // });
-
-      document.body.addEventListener('mousemove', (event) => {
-
-        if (document.pointerLockElement === document.body) {
-
-          camera.rotation.y -= event.movementX / 500;
-          camera.rotation.x -= event.movementY / 500;
-
-        }
-
-      });
-
-      window.addEventListener('resize', this.onWindowResize);
-    },
-
-    initLoadingManager() {
-      loadingBarElement = document.querySelector('.loading-bar')
-      loadingManager = new THREE.LoadingManager(
-        // Loaded
-        () => {
-          // Wait a little
-          window.setTimeout(() => {
-            // Animate overlay
-            gsap.to(overlayMaterial.uniforms.uAlpha, { duration: 3, value: 0, delay: 1 })
-
-            // Update loadingBarElement
-            loadingBarElement.classList.add('ended')
-            loadingBarElement.style.transform = ''
-          }, 500)
-
-          window.setTimeout(() => {
-            this.sceneReady = true
-          }, 2000)
-        },
-
-        // Progress
-        (itemUrl, itemsLoaded, itemsTotal) => {
-          // Calculate the progress and update the loadingBarElement
-          const progressRatio = itemsLoaded / itemsTotal
-          loadingBarElement.style.transform = `scaleX(${progressRatio})`
-        }
-      )
-    },
-    initOverlay() {
-      const overlayGeometry = new THREE.PlaneGeometry(2, 2, 1, 1)
-      overlayMaterial = new THREE.ShaderMaterial({
-        // wireframe: true,
-        transparent: true,
-        uniforms:
-        {
-          uAlpha: { value: 1 }
-        },
-        vertexShader: `
-                        void main()
-                        {
-                            gl_Position = vec4(position, 1.0);
-                        }
-    `,
-        fragmentShader: `
-                            uniform float uAlpha;
-
-                            void main()
-                            {
-                                gl_FragColor = vec4(0.0, 0.0, 0.0, uAlpha);
-                            }
-    `
-      })
-      const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial)
-      scene.add(overlay)
-    },
-    initLoader() {
-      textureLoader = new THREE.TextureLoader(loadingManager);
-
-    },
-
-    initRender() {
-
-
-
-      const container = document.getElementById('webgl');
-
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(window.innerWidth, window.innerHeight);
-
-      renderer.xr.enabled = true;
-      renderer.xr.setReferenceSpaceType('local');
-
-
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.VSMShadowMap;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      container.appendChild(renderer.domElement);
-
-      document.body.appendChild(VRButton.createButton(renderer));
-
-
-      stats = new Stats();
-      stats.domElement.style.position = 'absolute';
-      stats.domElement.style.top = '0px';
-      container.appendChild(stats.domElement);
-
-
-
-      this.spheres = [];
-      this.sphereIdx = 0;
-
-
+      // scene
+      this.scene = new THREE.Scene();
+      this.clock = new THREE.Clock();
 
       worldOctree = new Octree();
 
@@ -384,183 +135,283 @@ export default {
 
 
 
+      this.user = new THREE.Object3D();
+
+      this.scene.add(this.user);
+      this.user.add(this.camera);
 
     },
-    getForwardVector() {
+    addController() {
 
-      camera.getWorldDirection(playerDirection);
-      playerDirection.y = 0;
-      playerDirection.normalize();
+      const controllerModelFactory = new XRControllerModelFactory();
+      controller1 = this.renderer.xr.getController(0);  // 获取第一个控制器
+      controller1.add(controllerModelFactory.createControllerModel(controller1));  // 创建控制器模型并添加到控制器对象中
+      this.scene.add(controller1);
 
-      return playerDirection;
-
-    },
-    getSideVector() {
-
-      camera.getWorldDirection(playerDirection);
-      playerDirection.y = 0;
-      playerDirection.normalize();
-      playerDirection.cross(camera.up);
-
-      return playerDirection;
+      controller2 = this.renderer.xr.getController(1);
+      controller2.add(controllerModelFactory.createControllerModel(controller2));  // 创建控制器模型并添加到控制器对象中
+      this.scene.add(controller2);
 
     },
-    playerCollisions() {
+    showBlinking() {
 
-      const result = worldOctree.capsuleIntersect(playerCollider);
+      this.user.rotation.x = this.startRotationt.x;
+      this.user.rotation.y = this.startRotationt.y;
+      this.user.rotation.z = this.startRotationt.z;
+      this.user.position.set(this.startPos.x, this.userH, this.startPos.z);
 
-      this.playerOnFloor = false;
+      this.camera.position.z = 5;
+      this.camera.rotation.y = -(Math.PI * 0.45)
+      this.camera.rotation.order = 'YXZ';
+      this.isInDreaming = true;
 
-      if (result) {
+      let textureUpper = new THREE.TextureLoader().load('public/upperEyelid.png')
+      let textureLower = new THREE.TextureLoader().load('public/lowerEyelid.png')
 
-        this.playerOnFloor = result.normal.y > 0;
+      textureUpper.wrapS = THREE.RepeatWrapping
+      textureLower.wrapS = THREE.RepeatWrapping
 
-        if (!this.playerOnFloor) {
 
-          playerVelocity.addScaledVector(result.normal, - result.normal.dot(playerVelocity));
+      textureUpper.wrapT = THREE.RepeatWrapping
+      textureLower.wrapT = THREE.RepeatWrapping
+
+
+      let materialUpper = new THREE.MeshBasicMaterial({ map: textureUpper, transparent: true });
+      let materialLower = new THREE.MeshBasicMaterial({ map: textureLower, transparent: true });
+
+      let upperEyelid = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), materialUpper);
+      let lowerEyelid = upperEyelid.clone();
+      lowerEyelid.material = materialLower;
+
+
+      // 初始化眼睑位置
+      upperEyelid.position.y = this.camera.position.y - 5;
+      upperEyelid.position.z = -1;
+      lowerEyelid.position.y = this.camera.position.y + 5;
+      lowerEyelid.position.z = -1;
+
+      this.user.add(upperEyelid, lowerEyelid);
+
+
+      gsap.to(upperEyelid.position, {
+        duration: 3,
+        y: this.camera.position.y,
+        repeat: 2,
+        yoyo: true,
+        ease: "power2.inOut",
+        onComplete: () => {
+          this.user.remove(upperEyelid);
+          this.user.remove(lowerEyelid);
+
+          materialUpper.dispose();
+          materialLower.dispose();
+          textureUpper.dispose();
+          textureLower.dispose();
+
+          setTimeout(() => {
+            this.startStoryLine();
+          }, 1000);
+        }
+      });
+
+      gsap.to(lowerEyelid.position, {
+        duration: 3,
+        y: this.camera.position.y,
+        repeat: 2,
+        yoyo: true,
+        ease: "power2.inOut",
+
+      });
+
+
+
+    },
+    startStoryLine() {
+      this.goToPoint(
+        {
+          x: -198.93,
+          y: 10.39,
+          z: -48.65
+        }, 10,
+        () => {
 
         }
+      );
 
-        playerCollider.translate(result.normal.multiplyScalar(result.depth));
 
-      }
 
-    },
-    updatePlayer(deltaTime) {
 
-      let damping = Math.exp(- 4 * deltaTime) - 1;
-
-      if (!this.playerOnFloor) {
-
-        playerVelocity.y -= GRAVITY * deltaTime;
-
-        // small air resistance
-        damping *= 0.1;
-
-      }
-
-      playerVelocity.addScaledVector(playerVelocity, damping);
-
-      const deltaPosition = playerVelocity.clone().multiplyScalar(deltaTime);
-      playerCollider.translate(deltaPosition);
-
-      this.playerCollisions();
-
-      camera.position.copy(playerCollider.end);
 
     },
-    // 超出边界后重置位置
-    teleportPlayerIfOob() {
-      // console.log('teleportPlayerIfOob', camera.position.y);
-      if (camera.position.y <= - 25) {
+    showOriginalPainting() {
 
-        playerCollider.start.set(this.startPos.x, this.startPos.y, this.startPos.z);
-        playerCollider.end.set(this.endPos.x, this.endPos.y, this.endPos.z);
-        playerCollider.radius = this.radius;
-        camera.position.copy(playerCollider.end);
-        camera.rotation.set(this.startRotationt.x, this.startRotationt.y, this.startRotationt.z);
+      const geometryParm = {
+        width: 8000,
+        height: 840,
+        widthSegments: 100,
+        heightSegments: 100
+      };
 
+      // geometry
+      const geometry = new THREE.PlaneBufferGeometry(
+        geometryParm.width,
+        geometryParm.height,
+        geometryParm.widthSegments,
+        geometryParm.heightSegments
+      );
+      const count = geometry.attributes.position.count;
+      const randoms = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        randoms[i] = Math.random();
       }
 
-    },
-    controls(deltaTime) {
+      geometry.setAttribute("aRandom", new THREE.BufferAttribute(randoms, 1));
 
-      // gives a bit of air control
-      const speedDelta = deltaTime * (this.playerOnFloor ? 25 : 8);
+      // material
+      const material = new THREE.RawShaderMaterial({
+        vertexShader: `precision mediump float;
+                uniform mat4 modelViewMatrix;
+                uniform mat4 projectionMatrix;
+                attribute vec3 position;
+                attribute vec2 uv;
+                varying vec2 vUv;
+                uniform float mouseValue;
+                attribute float aRandom;
+                const float PI = 3.1415926535897932384626433832795;
 
-      if (this.keyStates['KeyW']) {
+                void main() {
+                    vUv = uv;
+                    vec3 pos = position;
+                    vec2 uvCurve = vUv;
+                    vec3 curve = vec3(
+                        sin(uvCurve.y * PI) * mouseValue,
+                        0,
+                        0.
+                    );
+                    pos += curve * aRandom * 2.0;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                }
+                    `,
+        fragmentShader: `
+                precision mediump float;
+                varying vec2 vUv;
+                uniform sampler2D uTexture;
+                uniform float mouseValue;
 
-        playerVelocity.add(this.getForwardVector().multiplyScalar(speedDelta));
+                void main() {
+                    //final color
+                    vec4 defaultColor = texture2D(uTexture, vUv);
+                    vec4 redColor = texture2D(uTexture, vUv + vec2(mouseValue * -0.003,0.0));
+                    vec4 greenColor = texture2D(uTexture, vUv + vec2(mouseValue * -0.002,0.0));
+                    vec4 blueColor = texture2D(uTexture, vUv + vec2(mouseValue * -0.005,0.0));
 
-      }
-
-      if (this.keyStates['KeyS']) {
-
-        playerVelocity.add(this.getForwardVector().multiplyScalar(- speedDelta));
-
-      }
-
-      if (this.keyStates['KeyA']) {
-
-        playerVelocity.add(this.getSideVector().multiplyScalar(- speedDelta));
-
-      }
-
-      if (this.keyStates['KeyD']) {
-
-        playerVelocity.add(this.getSideVector().multiplyScalar(speedDelta));
-
-      }
-
-      if (this.playerOnFloor) {
-
-        if (this.keyStates['Space']) {
-
-          playerVelocity.y = 15;
-
+                    gl_FragColor = vec4(redColor.r , greenColor.g , blueColor.b , defaultColor.a) ;
+                }
+            `,
+        transparent: true,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uTime: { type: "f", value: 0.0 },
+          uTexture: { type: "t", value: null },
+          mouseValue: { type: 'f', value: null }
         }
+      });
 
-      }
+      const texture = new THREE.TextureLoader().load('public/original_painting.png');
+
+      material.uniforms.uTexture.value = texture;
+
+      // mesh
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.x = 5000;
+      mesh.position.z = -1200;
+
+      this.scene.add(mesh);
+
+      const timeValue = 2;
+
+      gsap.to(mesh.position, {
+        duration: timeValue,
+        x: -2000,
+        repeat: 0,
+
+      });
+
+      setTimeout(() => {
+        this.intervalTemp = setInterval(() => {
+
+          const mouseX = Math.floor(Math.random() * 61) - 30;
+          const mouseY = Math.floor(Math.random() * 61) - 30;
+
+          const x = this.startX - mouseX;
+          const y = this.startY - mouseY;
+
+          this.startX = mouseX;
+          this.startY = mouseY;
+          material.uniforms.mouseValue.value = (x + y) / 2;
+
+        }, 30);
+
+        setTimeout(() => {
+          clearInterval(this.intervalTemp);
+
+          this.scene.remove(mesh);
+          material.dispose();
+          geometry.dispose();
+          texture.dispose();
+          this.showBlinking();
+          this.loadModel('/models/7/scene.gltf', (model) => {
+            model.scene.scale.set(this.scaleValue, this.scaleValue, this.scaleValue)
+            this.scene.add(model.scene);
+
+            worldOctree.fromGraphNode(model.scene);
+          });
+
+          setTimeout(() => {
+            this.loadShips();
+          }, 1000);
+
+        }, 2000);
+
+      }, timeValue * 1000);
 
     },
-    animate(time) {
+    loadShips() {
 
-      const deltaTime = Math.min(0.05, clock.getDelta()) / STEPS_PER_FRAME;
-      time *= 0.001;
-
-      for (let i = 0; i < STEPS_PER_FRAME; i++) {
-
-        this.controls(deltaTime);
-
-        this.updatePlayer(deltaTime);
+      this.loadModel('/models/boat/boat.FBX', (model) => {
+        model.scale.set(0.004, 0.004, 0.004)
+        model.position.set(0, -5, 3)
+        model.rotation.y = Math.PI * 180;
+        this.user.add(model);
 
 
-
-        this.teleportPlayerIfOob();
-
-      }
-
-      renderer.render(scene, camera);
-
-      stats.update();
-
-
+      })
 
 
     },
-    loadModel() {
-      const that = this;
-      function addModel(model) {
-        that.currentModel = model;
-
-        model.scene.scale.set(that.scaleValue, that.scaleValue, that.scaleValue)
-        scene.add(model.scene);
-        that.addTipModel();
-
-        worldOctree.fromGraphNode(model.scene);
-
-        model.scene.traverse(child => {
-
-          if (child.isMesh) {
-
-            child.castShadow = true;
-            child.receiveShadow = true;
-
-            if (child.material.map) {
-
-              child.material.map.anisotropy = 4;
-
-            }
-
-          }
-
-        });
+    goToPoint(point, duration, doneBlock) {
 
 
 
-      }
+      gsap.to(this.user.position, {
+        duration: duration,
+        x: point.x,
+        y: point.y,
+        z: point.z,
+        repeat: 0,
+        yoyo: true,
+        ease: "power2.inOut",
+        onComplete: () => {
+          doneBlock();
+        }
+      });
 
-      const modelURl = '/models/7/scene.gltf';
+    },
+    loadModel(url, addBlock) {
+
+
+      const modelURl = url;
 
 
       // 加载模型
@@ -569,31 +420,31 @@ export default {
       switch (format) {
         case 'gltf':
         case 'glb':
-          loader = new GLTFLoader(loadingManager);
-          loader.load(modelURl, (model) => {
-            addModel(model);
+          this.loader = new GLTFLoader();
+          this.loader.load(modelURl, (model) => {
 
+            addBlock(model);
           },
           );
           break;
         case 'obj':
-          loader = new OBJLoader(loadingManager);
-          loader.load(modelURl, (model) => {
-            addModel(model);
+          this.loader = new OBJLoader();
+          this.loader.load(modelURl, (model) => {
+            addBlock(model);
           },
 
           );
           break;
         case 'stl':
-          loader = new STLLoader(loadingManager);
-          loader.load(modelURl, (model) => {
-            addModel(model);
+          this.loader = new STLLoader();
+          this.loader.load(modelURl, (model) => {
+            addBlock(model);
           },);
           break;
         case 'fbx':
-          loader = new FBXLoader(loadingManager);
-          loader.load(modelURl, (model) => {
-            addModel(model);
+          this.loader = new FBXLoader();
+          this.loader.load(modelURl, (model) => {
+            addBlock(model);
           },);
           break;
         default:
@@ -601,15 +452,25 @@ export default {
           return;
       }
     },
+    onResize() {
+      this.stageWidth = window.innerWidth;
+      this.stageHeight = window.innerHeight;
+      this.renderer.setSize(this.stageWidth, this.stageHeight);
+      this.camera.aspect = this.stageWidth / this.stageHeight;
+      this.camera.updateProjectionMatrix();
+    },
+    addEventListener() {
 
-    onWindowResize() {
 
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
+      window.addEventListener('resize', this.onResize);
+    },
+    render(time) {
 
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.render(this.scene, this.camera);
 
-    }
+
+
+    },
 
 
   }

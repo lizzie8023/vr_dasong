@@ -4,10 +4,7 @@
  
  <div class="container">
      <div class="webgl" id="webgl"></div>
-      <audio id="music" preload="auto" style="display: none">
-        <source src="/audio/story1.ogg" type="audio/ogg">
-   
-	    </audio>
+ 
  </div>
  
 </template>
@@ -23,7 +20,6 @@ import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
 import { Octree } from 'three/addons/math/Octree.js';
 import { gsap } from 'gsap'
-import TWEEN from 'three/examples/jsm/libs/tween.module.js';
 import { Capsule } from 'three/addons/math/Capsule.js';
 import { XRControllerModelFactory } from 'three/examples/jsm/webxr/XRControllerModelFactory';
 import {
@@ -31,6 +27,10 @@ import {
 } from 'three/addons/webxr/VRButton.js';
 
 
+let playerCollider, playerVelocity, playerDirection, worldOctree;
+
+let GRAVITY = 30;
+let STEPS_PER_FRAME = 5;
 
 export default {
   data() {
@@ -40,9 +40,7 @@ export default {
       keyStates: {},
       scaleValue: 200,
       radius: 1,
-      userH: 1,
-      dollyH: 4.5,
-      userPos: null,
+      userH: 7.5,
       startRotationt: {
         x: -0.072,
         y: -1.47,
@@ -71,7 +69,6 @@ export default {
     this.renderer.xr.addEventListener('sessionstart', (event) => {
       console.log("Session started", event);
       this.showOriginalPainting();
-
     });
 
     this.renderer.xr.addEventListener('sessionend', (event) => {
@@ -80,6 +77,11 @@ export default {
 
     });
 
+
+    setInterval(() => {
+
+      console.log('camera', this.camera.position, this.camera.rotation)
+    }, 3000);
 
 
   },
@@ -115,28 +117,38 @@ export default {
 
       // scene
       this.scene = new THREE.Scene();
-      // this.scene.background = new THREE.Color(0xffffff);
       this.clock = new THREE.Clock();
 
+      worldOctree = new Octree();
+
+      playerCollider = new Capsule(new THREE.Vector3(this.startPos.x, this.startPos.y, this.startPos.z), new THREE.Vector3(this.endPos.x, this.endPos.y, this.endPos.z), this.radius);
 
 
-      this.dolly = new THREE.Object3D();
+
+      playerVelocity = new THREE.Vector3();
+      playerDirection = new THREE.Vector3();
+
+
+
       this.user = new THREE.Object3D();
-      this.user.position.y = this.userH;
-      this.dolly.add(this.user)
+
+      this.scene.add(this.user);
       this.user.add(this.camera);
-      this.scene.add(this.dolly);
 
     },
+    addController() {
 
+
+
+    },
     showBlinking() {
 
-      this.dolly.rotation.x = this.startRotationt.x;
-      this.dolly.rotation.y = this.startRotationt.y;
-      this.dolly.rotation.z = this.startRotationt.z;
-      this.dolly.position.set(this.startPos.x, this.dollyH, this.startPos.z);
+      this.user.rotation.x = this.startRotationt.x;
+      this.user.rotation.y = this.startRotationt.y;
+      this.user.rotation.z = this.startRotationt.z;
+      this.user.position.set(this.startPos.x, this.userH, this.startPos.z);
 
-
+      this.camera.position.z = 5;
       this.camera.rotation.y = -(Math.PI * 0.45)
       this.camera.rotation.order = 'YXZ';
       this.isInDreaming = true;
@@ -161,20 +173,12 @@ export default {
 
 
       // 初始化眼睑位置
-      upperEyelid.position.y = this.user.position.y - 5;
+      upperEyelid.position.y = this.camera.position.y - 5;
       upperEyelid.position.z = -1;
-      lowerEyelid.position.y = this.user.position.y + 5;
+      lowerEyelid.position.y = this.camera.position.y + 5;
       lowerEyelid.position.z = -1;
 
-      this.dolly.add(upperEyelid, lowerEyelid);
-
-      this.tempInterval = setInterval(() => {
-
-        upperEyelid.position.y += 0.1
-        lowerEyelid.position.y -= 0.1
-
-
-      }, 10);
+      this.user.add(upperEyelid, lowerEyelid);
 
 
       gsap.to(upperEyelid.position, {
@@ -184,8 +188,8 @@ export default {
         yoyo: true,
         ease: "power2.inOut",
         onComplete: () => {
-          this.dolly.remove(upperEyelid);
-          this.dolly.remove(lowerEyelid);
+          this.user.remove(upperEyelid);
+          this.user.remove(lowerEyelid);
 
           materialUpper.dispose();
           materialLower.dispose();
@@ -210,27 +214,13 @@ export default {
 
 
     },
-    initAudio() {
-
-      const listener = new THREE.AudioListener();
-      this.camera.add(listener);
-
-      this.audioElement = document.getElementById('music');
-      this.audioElement.play();
-
-      const positionalAudio = new THREE.PositionalAudio(listener);
-      positionalAudio.setMediaElementSource(this.audioElement);
-      positionalAudio.setRefDistance(1);
-      positionalAudio.setDirectionalCone(180, 230, 0.1);
-      this.dolly.add(positionalAudio)
-    },
     startStoryLine() {
       this.goToPoint(
         {
           x: -198.93,
           y: 10.39,
           z: -48.65
-        }, 60,
+        }, 10,
         () => {
 
         }
@@ -242,22 +232,6 @@ export default {
 
     },
     showOriginalPainting() {
-
-
-
-      const baseReferenceSpace = this.renderer.xr.getReferenceSpace();
-
-      const offsetPosition = this.camera.position;
-
-      const offsetRotation = this.camera.quaternion;
-
-      const transform = new XRRigidTransform(offsetPosition, { x: offsetRotation.x, y: -(offsetRotation.y), z: offsetRotation.z, w: offsetRotation.w });
-      //const transform = new XRRigidTransform( offsetPosition, { x: offsetRotation.x, y: -(offsetRotation.y - 0.85), z: offsetRotation.z, w: offsetRotation.w } ); 
-      const teleportSpaceOffset = baseReferenceSpace.getOffsetReferenceSpace(transform);
-
-      this.renderer.xr.setReferenceSpace(teleportSpaceOffset);
-
-
 
       const geometryParm = {
         width: 8000,
@@ -332,169 +306,73 @@ export default {
         }
       });
 
-      new THREE.TextureLoader().load('/original_painting.png', (texture) => {
+      const texture = new THREE.TextureLoader().load('/original_painting.png');
 
-        this.initAudio();
+      material.uniforms.uTexture.value = texture;
 
-        material.uniforms.uTexture.value = texture;
+      // mesh
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.x = 5000;
+      mesh.position.z = -1200;
 
-        // mesh
-        const mesh = new THREE.Mesh(geometry, material);
+      this.scene.add(mesh);
 
-        mesh.position.z = -600;
+      const timeValue = 2;
 
-        this.scene.add(mesh);
-
-        const timeValue = 13;
-
-        this.userPos = new THREE.Vector3();
-        this.userPos.copy(this.user.position);
-
-
-        gsap.to(mesh.position, {
-          duration: timeValue,
-          x: -2000,
-          repeat: 0,
-          onComplete: () => {
-            this.intervalTemp = setInterval(() => {
-
-              const mouseX = Math.floor(Math.random() * 61) - 30;
-              const mouseY = Math.floor(Math.random() * 61) - 30;
-
-              const x = this.startX - mouseX;
-              const y = this.startY - mouseY;
-
-              this.startX = mouseX;
-              this.startY = mouseY;
-              material.uniforms.mouseValue.value = (x + y) / 2;
-
-            }, 30);
-
-            setTimeout(() => {
-              clearInterval(this.intervalTemp);
-
-              this.scene.remove(mesh);
-              material.dispose();
-              geometry.dispose();
-              texture.dispose();
-
-
-              this.audioElement.pause();
-
-
-
-
-
-
-              this.loadModel('/models/7/scene.gltf', (model) => {
-                model.scene.scale.set(this.scaleValue, this.scaleValue, this.scaleValue)
-                this.scene.add(model.scene);
-
-                this.audioElement.play();
-                this.showBlinking();
-                setTimeout(() => {
-                  this.loadShips();
-                  this.loadruci();
-                  this.loadGeese();
-                }, 1000);
-
-              });
-
-
-
-            }, 2000);
-          }
-        });
-
+      gsap.to(mesh.position, {
+        duration: timeValue,
+        x: -2000,
+        repeat: 0,
 
       });
 
+      setTimeout(() => {
+        this.intervalTemp = setInterval(() => {
 
+          const mouseX = Math.floor(Math.random() * 61) - 30;
+          const mouseY = Math.floor(Math.random() * 61) - 30;
+
+          const x = this.startX - mouseX;
+          const y = this.startY - mouseY;
+
+          this.startX = mouseX;
+          this.startY = mouseY;
+          material.uniforms.mouseValue.value = (x + y) / 2;
+
+        }, 30);
+
+        setTimeout(() => {
+          clearInterval(this.intervalTemp);
+
+          this.scene.remove(mesh);
+          material.dispose();
+          geometry.dispose();
+          texture.dispose();
+          this.showBlinking();
+          this.loadModel('/models/7/scene.gltf', (model) => {
+            model.scene.scale.set(this.scaleValue, this.scaleValue, this.scaleValue)
+            this.scene.add(model.scene);
+
+            worldOctree.fromGraphNode(model.scene);
+          });
+
+          setTimeout(() => {
+            this.loadShips();
+          }, 1000);
+
+        }, 2000);
+
+      }, timeValue * 1000);
 
     },
     loadShips() {
 
-
-      const boatScale = 0.003;
       this.loadModel('/models/boat/boat.FBX', (model) => {
-        model.scale.set(boatScale, boatScale, boatScale)
-        model.position.set(0, 0, 1.5)
-        model.rotation.y += Math.PI;
-        this.dolly.add(model);
+        model.scale.set(0.004, 0.004, 0.004)
+        model.position.set(0, -5, 3)
+        model.rotation.y = Math.PI * 180;
+        this.user.add(model);
 
-      })
-
-      const shutongScale = 0.000025;
-      this.loadModel('/models/children/Shutong_Point.fbx', (model) => {
-
-        model.scale.set(shutongScale, shutongScale, shutongScale)
-        model.position.set(-1, 0.7, -3.5)
-        model.rotation.y += Math.PI;
-        this.dolly.add(model);
-        this.mixer = new THREE.AnimationMixer(model);
-
-        const animation = this.mixer.clipAction(model.animations[0])
-
-        animation.play(); // 播放第一个动画
-      })
-
-      const yuwenScale = 0.0002;
-      this.loadModel('/models/Fisherman/yu.fbx', (model) => {
-        model.scale.set(yuwenScale, yuwenScale, yuwenScale)
-        model.position.set(0, 0, 6.5)
-        model.rotation.y += Math.PI;
-        this.dolly.add(model);
-
-      })
-
-
-    },
-    loadGeese() {
-
-
-      const boxWidth = 10;
-      const boxHeight = 10;
-      const boxDepth = 10;
-      const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
-
-      const material = new THREE.MeshPhongMaterial({ color: '#ffffff' });
-      const cube = new THREE.Mesh(boxGeometry, material);
-      cube.position.set(-70, 150, 200)
-      this.scene.add(cube);
-
-
-      gsap.to(cube.position, {
-        duration: 60,
-        z: -600,
-        repeat: 0,
-        ease: "power2.inOut",
-        onComplete: () => {
-
-        }
-      });
-
-      // const geeseScale = 0.00005;
-      // this.loadModel('/models/Geese/niao.fbx', (model) => {
-      //   model.scale.set(geeseScale, geeseScale, geeseScale)
-      //   model.background = new THREE.Color(0xffffff)
-      //   // model.position.set(this.dolly.position.x, this.dolly.position.y, this.dolly.position.z)
-      //   // model.position.set(-70, 30, 0)
-      //   // model.rotation.y += Math.PI;
-      //   this.dolly.add(model);
-
-      // })
-
-
-    },
-    loadruci() {
-
-      const ruciScale = 0.0003;
-      this.loadModel('/models/cormorants/ruci.fbx', (model) => {
-        model.scale.set(ruciScale, ruciScale, ruciScale)
-
-        model.position.set(-202, 2.3, -70)
-        model.rotation.y += Math.PI;
-        this.scene.add(model);
 
       })
 
@@ -504,7 +382,7 @@ export default {
 
 
 
-      gsap.to(this.dolly.position, {
+      gsap.to(this.user.position, {
         duration: duration,
         x: point.x,
         y: point.y,
@@ -577,11 +455,8 @@ export default {
     render(time) {
 
       this.renderer.render(this.scene, this.camera);
-      const delta = this.clock.getDelta();
-      gsap.ticker.tick(delta);
-      if (this.mixer) {
-        this.mixer.update(delta);
-      }
+
+
 
     },
 

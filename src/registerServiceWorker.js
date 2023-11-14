@@ -4,7 +4,7 @@ import { register } from 'register-service-worker'
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     if (process.env.NODE_ENV === 'production') {
-      register(`${window.location.origin}/service-worker.js`, {
+      register(`./service-worker.js`, {
         ready() {
           console.log(
             'App is being served from cache by a service worker.\n' +

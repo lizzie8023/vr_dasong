@@ -58,11 +58,12 @@ export default defineConfig({
                globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
                maximumFileSizeToCacheInBytes: 500000000
            },
-           workboxPluginMode: 'GenerateSW',
+            workboxPluginMode: 'InjectManifest',
             workboxOptions: {
-            // swDest is the file output path for the generated service worker.
-            swDest: 'service-worker.js',
-            // other workbox options...
+            importScripts: ['https://storage.googleapis.com/workbox-cdn/releases/5.1.4/workbox-sw.js'],
+            exclude: [/\.html$/],//html不进行service Worker缓存
+            // 自定义 Service Worker 文件的位置
+            swSrc: 'src/service-worker.js'
             }
        })],
     resolve: {

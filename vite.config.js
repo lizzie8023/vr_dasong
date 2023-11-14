@@ -63,7 +63,7 @@ export default defineConfig({
             importScripts: ['https://storage.googleapis.com/workbox-cdn/releases/5.1.4/workbox-sw.js'],
             exclude: [/\.html$/],//html不进行service Worker缓存
             // 自定义 Service Worker 文件的位置
-            swSrc: 'src/service-worker.js'
+            swSrc: '/src/service-worker.js'
             }
        })],
     resolve: {

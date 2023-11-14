@@ -61,6 +61,27 @@ export default {
     }
   },
   mounted() {
+    // console.log(111111)
+    // if ('xr' in navigator) {
+
+    //   navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+
+    //     if (supported) {
+    //       // const collection = document.getElementsByClassName("ar-button");
+    //       alert('支持')
+    //     } else { 
+    //       alert('不支持')
+    //     }
+
+    //     console.log(supported)
+
+    //   });
+
+    // }
+    // else {
+    //   alert("not supported");
+    // }
+
 
     this.init();
     this.renderer.setAnimationLoop(this.render);
@@ -457,10 +478,29 @@ export default {
       const boxDepth = 10;
       const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
 
-      const material = new THREE.MeshPhongMaterial({ color: '#ffffff' });
+      const material = new THREE.MeshPhongMaterial({
+
+        color: 0xFFFFFF, // 材质颜色
+        specular: 0x050505, // 高光颜色
+        shininess: 100, // 光泽度
+
+        // 为了制作透明材质
+        transparent: true, // 设置材质为透明
+        opacity: 0.5 // 设置透明度。1为完全不透明，0为全透明
+      });
+
       const cube = new THREE.Mesh(boxGeometry, material);
       cube.position.set(-70, 150, 200)
       this.scene.add(cube);
+
+      const geeseScale = 0.5;
+      this.loadModel('public/models/Geese/dayan.fbx', (model) => {
+        model.scale.set(geeseScale, geeseScale, geeseScale)
+        cube.add(model);
+        // model.position.set(-70, 150, 200)
+        // this.scene.add(model);
+
+      })
 
 
       gsap.to(cube.position, {
@@ -472,18 +512,6 @@ export default {
 
         }
       });
-
-      // const geeseScale = 0.00005;
-      // this.loadModel('/models/Geese/niao.fbx', (model) => {
-      //   model.scale.set(geeseScale, geeseScale, geeseScale)
-      //   model.background = new THREE.Color(0xffffff)
-      //   // model.position.set(this.dolly.position.x, this.dolly.position.y, this.dolly.position.z)
-      //   // model.position.set(-70, 30, 0)
-      //   // model.rotation.y += Math.PI;
-      //   this.dolly.add(model);
-
-      // })
-
 
     },
     loadruci() {

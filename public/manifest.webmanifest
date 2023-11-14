@@ -1,12 +1,10 @@
 {
     "name": "大宋VR",
-    "short_name": "vr_dasong",
+    "short_name": "大宋VR",
+    "description": "我的第一个VR项目",
     "start_url": "https://localhost/index.html",
     "display": "standalone",
-    "background_color": "#ffffff",
-    "lang": "en",
-    "scope": "/",
-    "description": "我的第一个VR项目",
+    "background_color": "#fff",
     "theme_color": "#00bd7e",
     "icons": [
         {

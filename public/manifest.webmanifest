@@ -6,6 +6,7 @@
     "display": "standalone",
     "background_color": "#fff",
     "theme_color": "#00bd7e",
+    "ovr_package_name": "vr.dasong.wangyuanju",
     "icons": [
         {
             "src": "/App_icon192.png",

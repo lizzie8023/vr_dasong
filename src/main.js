@@ -1,5 +1,6 @@
 import './assets/main.css'
 import './registerServiceWorker'
+import './service-worker.js'
 import { createApp } from 'vue'
 import App from './App.vue'
 // import zhayan from './zhayan.vue'
